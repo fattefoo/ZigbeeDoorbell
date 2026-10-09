@@ -1,0 +1,30 @@
+# Arduino Build-Artefakte
+build/
+*.elf
+*.bin.out
+*.map
+
+# Sketchbook-Standard: kompilierte Images, aber NICHT das LittleFS-Image
+# fuer das Dateisystem (das wird bewusst erzeugt und ist weiter unten erlaubt)
+*.hex
+
+# Tool-Binaries (14 MB, besser einmal herunterladen als einchecken)
+receiver/ZigbeeBellV2/tools/*.bin
+receiver/ZigbeeBellV2/tools/
+
+# Kompilierte Audio-Dateien, die aus audio/ erzeugt werden
+receiver/ZigbeeBellV2/data/*.mp3
+receiver/ZigbeeBellV2/data/*.wav.tmp
+
+# LittleFS-Dateisystem-Images (einmalig erzeugt, nicht versioniert)
+*.fs
+littlefs.bin
+mklittlefs.bin
+
+# Editor-/Systemdateien
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db

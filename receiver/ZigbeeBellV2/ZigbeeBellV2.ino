@@ -224,12 +224,24 @@ void setup() {
   Serial.begin(115200);
 
   // 1. Filesystem Setup
-  if (!LittleFS.begin()) {
+  // formatOnFail bleibt bewusst false: ein fehlgeschlagener Mount soll das
+  // hochgeladene Image nicht ungefragt loeschen, sondern sichtbar melden.
+  // Das Partitions-Label muss zum gewaehlten Partition Scheme passen
+  // ("Zigbee 4MB with spiffs" bzw. "Zigbee 8MB with spiffs").
+  if (!LittleFS.begin(false)) {
+    Serial.println(F("========================================="));
     Serial.println(F("LittleFS Mount Fehler!"));
-    return;
-  }
-  if (!LittleFS.exists(BELL_FILE)) {
-    Serial.printf("%s nicht gefunden! Bitte Datei hochladen.\n", BELL_FILE);
+    Serial.println(F("Die Partition passt nicht zum Dateisystem."));
+    Serial.println(F("Wahrscheinlich wurde das bell-Image mit"));
+    Serial.println(F("falschem Offset oder falscher Groesse gebaut."));
+    Serial.println(F("Klingel bleibt stumm, Zigbee startet trotzdem."));
+    Serial.println(F("========================================="));
+  } else if (!LittleFS.exists(BELL_FILE)) {
+    Serial.println(F("========================================="));
+    Serial.printf("%s nicht gefunden!\n", BELL_FILE);
+    Serial.println(F("Dateisystem ist gemountet, aber leer."));
+    Serial.println(F("Klingel bleibt stumm, Zigbee startet trotzdem."));
+    Serial.println(F("========================================="));
   }
 
   preferences.begin(PREF_NAME, true);

@@ -16,17 +16,19 @@
 #define BUTTON_PIN BOOT_PIN        // lokaler Taster
 #define WAKEUP_PIN GPIO_NUM_4      // Optokoppler-Ausgang
 
-// Spannungsteiler 100k/100k -> am ADC kommt die halbe Spannung an
-const float dividerRatio = 2.0f;
-// Kalibrierte Referenzspannung des ESP32-C6
-const float vRef = 3.3f;
-
-// Batterie Grenzwerte (echte Akkuspannung, nach dem Teiler zurückgerechnet)
+// Batterie Grenzwerte. Die Spannung am ADC-Pin wird unveraendert als
+// Akkuspannung gewertet (wie in V1) und auf dieses Fenster begrenzt.
 const float batteryFullVoltage = 3.60f;   // 100 %
 const float batteryEmptyVoltage = 3.20f;  // 0 %
 
 // Zeitfenster, in dem ein ausgelöster Klingelton gesendet wird
 #define RING_WINDOW_MS 5000
+
+// Der Report wird von esp_zb_zcl_report_attr_cmd_req nur in den Sende-
+// Puffer gelegt und kehrt sofort zurueck; der eigentliche Versand
+// passiert asynchron im Zigbee-Task. Ohne diese Pause geht das Geraet
+// vorher in den Deep Sleep und der Coordinator sieht das "false" nie.
+#define REPORT_SETTLE_MS 500
 
 volatile bool sensorValue = false;
 
@@ -38,23 +40,16 @@ ZigbeeBinary zbBinaryDevice = ZigbeeBinary(DEVICE_ENDPOINT_NUMBER);
 // ------------------------------------------------------------------
 // Hilfsfunktionen
 // ------------------------------------------------------------------
-// Füllt voltageAtPin (was der ADC sieht) und batteryVoltage (echte Spannung).
-// Gibt false zurück, wenn die Messung ungültig ist.
-bool readBattery(float &batteryVoltage) {
+// Liefert die Spannung am ADC-Pin. Die Zuordnung zur Akkuspannung
+// passiert in measureBattery().
+bool readBattery(float &voltageAtPin) {
   analogSetPinAttenuation(ADC_PIN, ADC_11db);
 
   uint32_t sum = 0;
   for (int i = 0; i < 16; i++) {
     sum += analogReadMilliVolts(ADC_PIN);
   }
-  float voltageAtPin = (sum / 16.0f) / 1000.0f;
-
-  batteryVoltage = voltageAtPin * dividerRatio;
-
-  // Plausibilitätsprüfung: unter 2 V am Pin kommt nichts sinnvolles an
-  if (voltageAtPin < 2.0f || batteryVoltage > 5.0f) {
-    return false;
-  }
+  voltageAtPin = (sum / 16.0f) / 1000.0f;
   return true;
 }
 
@@ -72,10 +67,7 @@ uint8_t batteryPercentageFrom(float batteryVoltage) {
 void measureBattery() {
   float batteryVoltage = 0.0f;
 
-  if (!readBattery(batteryVoltage)) {
-    Serial.println("Batterie-Messung unplausibel, uebersprungen.");
-    return;
-  }
+  readBattery(batteryVoltage);
 
   uint8_t percentage = batteryPercentageFrom(batteryVoltage);
 
@@ -218,6 +210,8 @@ void loop() {
   // Binary Input nach RING_WINDOW_MS wieder zurücksetzen
   if (sensorValue && (millis() - lastRing) >= RING_WINDOW_MS) {
     unring();
+    // Der Coordinator braucht Zeit, das "false" auch zu empfangen
+    delay(REPORT_SETTLE_MS);
   }
 
   // Deep Sleep, sobald nichts mehr zu tun ist

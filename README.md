@@ -49,18 +49,34 @@ Beide Geräte nutzen die gleiche Belegung: kurzer Druck löst aus, langer Druck
 
 ## Batterieüberwachung (Sender)
 
-Der Sender misst die Akkuspannung über einen 100k/100k-Spannungsteiler an
-GPIO 0 und meldet zwei Werte:
+Der Sender misst die Akkuspannung an GPIO 0 und meldet zwei Werte:
 
-- **Batterie-Prozent** aus der zurückgerechneten Akkuspannung (3,2 – 3,6 V)
+- **Batterie-Prozent** aus der gemessenen Spannung im Fenster 3,2 – 3,6 V
 - **Batterie-Spannung** in 100-mV-Einheiten, wie es die Cluster-API erwartet
   (34 entspricht 3,4 V)
 
 Die Messung nutzt `analogReadMilliVolts()` mit 11 dB Dämpfung statt eines
-rohen `analogRead()` mit fest verdrahteter Referenzspannung.
+rohen `analogRead()` mit fest verdrahteter Referenzspannung, und mittelt
+16 Messungen.
+
+Die Spannung am ADC-Pin wird unverändert als Akkuspannung gewertet — ein
+100k/100k-Teiler ist **nicht** eingerechnet. Grund: die Messung zeigt die
+volle Spannung am Pin, eine Rückrechnung auf das Doppelte ergäbe Werte
+über 6 V. Ob am Board tatsächlich ein Teiler verbaut ist, ist offen; falls
+ja, muss `readBattery()` den Faktor 2 wieder einführen.
+
+Der Prozentwert ist eine lineare Interpolation über 3,2 – 3,6 V. Das
+Fenster ist nur 400 mV breit, dadurch ist die Anzeige grob: ±50 mV
+Messfehler verschieben sie um rund 12 Prozentpunkte. Für eine Li-Ion-Zelle
+ist zudem 3,6 V nicht der Ladezustand 100 %, sondern eher 60 – 75 %; wer
+eine brauchbare Prozentangabe braucht, braucht eine stückweise
+Entladekurve und ein Fenster bis 4,2 V.
 
 Der Binary Input wird nach 5 Sekunden wieder zurückgesetzt, damit der
-Coordinator ein Ereignis sieht und keinen Dauerzustand.
+Coordinator ein Ereignis sieht und keinen Dauerzustand. Vor dem Deep Sleep
+wartet der Sender 500 ms (`REPORT_SETTLE_MS`), weil `reportBinaryInput()`
+den Report nur in den Sende-Puffer legt und sofort zurückkehrt — ohne die
+Pause schläft das Gerät weg, bevor das „false" den Coordinator erreicht.
 
 ## Bauen
 
@@ -140,12 +156,17 @@ Zigbee-Pairing, das Gerät muss also neu angelernt werden.
 | `Zigbee failed to start!` + Reboot | Siehe Assert-Meldung darüber im Log |
 | ROM-Boot-Banner sichtbar, aber sonst **keine** Ausgabe | `USB CDC On Boot` steht auf Disabled — `Serial` läuft über UART0 statt USB |
 
-## Bekannte offene Punkte
+## Offene Punkte
 
-- `SetGain` wird beim Empfänger mit Werten bis 4.0 aufgerufen. Ob die
-  verwendete ESP8266Audio-Version diesen Bereich sauber abbildet, ist bisher
-  nur auf dem Gerät verifizierbar.
-- Der GPIO-Wakeup erwartet, dass der Optokoppler bei einem Klingelsignal auf
-  HIGH zieht (`ESP_GPIO_WAKEUP_GPIO_HIGH`). Falls der Ausgang invertiert ist,
-  wacht der Sender nicht auf. Ohne Schaltplan nicht prüfbar.
-- Beide Sketches sind bisher nur **kompiliert**, nicht auf Hardware getestet.
+- **Batterie-Prozent ist ungenau.** Lineare Interpolation über 3,2 – 3,6 V,
+  siehe oben. Für eine brauchbare Anzeige braucht es eine stückweise
+  Entladekurve und ein Fenster bis 4,2 V.
+- **Spannungsteiler unklar.** Der Faktor 2 ist entfernt, weil die Messung
+  die volle Spannung am Pin zeigt. Ob am Board ein 100k/100k-Teiler
+  verbaut ist, wurde nicht verifiziert.
+- **Die ADC-Reichweite begrenzt das Messfenster.** Mit 11 dB Dämpfung
+  liegt der messbare Bereich beim C6 bei rund 3,1 V. Ohne Teiler ist
+  darüber liegende Spannung (z. B. eine volle Li-Ion-Zelle mit 4,2 V)
+  nicht sauber erfassbar.
+- **`REPORT_SETTLE_MS` ist ein heuristischer Wert.** Die Bibliothek bietet
+  keine Möglichkeit, auf das tatsächliche Absenden des Reports zu warten.
